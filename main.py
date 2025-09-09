@@ -185,12 +185,7 @@ def main():
 
             price = last_tick.ask
 
-            tp_price, sl_price = calculate_entry("buy", price)
-
-            send_order("buy", INITIAL_LOT, last_tick.ask, tp_price, sl_price)
-
-            if MARTINGALE_MODE:
-                martingle_strategy("buy_limit", price)
+            martingle_strategy("buy_limit", price)
 
         elif last_rsi > RSI_OVERBOUGHT:
             if total_positions() > 0:
@@ -200,12 +195,7 @@ def main():
 
             price = last_tick.bid
 
-            tp_price, sl_price = calculate_entry("sell", price)
-
-            send_order("sell", INITIAL_LOT, price, tp_price, sl_price)
-
-            if MARTINGALE_MODE:
-                martingle_strategy("sell_limit", price)
+            martingle_strategy("sell_limit", price)
 
         time.sleep(1)
 
