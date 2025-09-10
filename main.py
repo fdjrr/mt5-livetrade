@@ -236,17 +236,17 @@ class TradingBot:
 
             tp_price, sl_price = self.calculate_entry(order_type, entry_price)
 
-            if step == 0:
+            if step == 1:
                 self.send_order(order_type, step, lot, entry_price, tp_price, sl_price)
             else:
                 if order_type == "buy":
-                    order_type = "buy_limit"
+                    type = "buy_limit"
                 elif order_type == "sell":
-                    order_type = "sell_limit"
+                    type = "sell_limit"
                 else:
                     raise ValueError("Invalid order type")
 
-                self.send_order(order_type, step, lot, entry_price, tp_price, sl_price)
+                self.send_order(type, step, lot, entry_price, tp_price, sl_price)
 
             entry_price = sl_price
 
