@@ -20,6 +20,8 @@ class TradingBot:
         multiplier=2,
         take_profit=None,
         stop_loss=None,
+        trailing_stop_mode=True,
+        trailing_point=5,
         deviation=20,
     ):
         self.symbol = symbol
@@ -39,6 +41,15 @@ class TradingBot:
 
         self.take_profit = take_profit
         self.stop_loss = stop_loss
+
+        self.trailing_stop_mode = trailing_stop_mode
+        self.trailing_point = trailing_point
+
+        self.tick_value = None
+        self.tick_size = None
+        self.volume_min = None
+        self.pip_value = None
+
         self.deviation = deviation
 
     def _get_account_info(self):
@@ -70,6 +81,8 @@ class TradingBot:
 
         self.tick_value = symbol_info.trade_tick_value
         self.tick_size = symbol_info.trade_tick_size
+        self.volume_min = symbol_info.volume_min
+        self.pip_value = (self.tick_value / self.tick_size) * self.volume_min
 
         # Symbol info
         logger.info("=" * 50)
@@ -78,6 +91,8 @@ class TradingBot:
         logger.info(f"Symbol: {symbol_info.name}")
         logger.info(f"Tick value: {self.tick_value}")
         logger.info(f"Tick size: {self.tick_size}")
+        logger.info(f"Volume min: {self.volume_min}")
+        logger.info(f"Pip value: {self.pip_value}")
         logger.info(f"Description: {symbol_info.description}")
 
     def _get_strategy_info(self):
@@ -93,6 +108,8 @@ class TradingBot:
         logger.info(f"Max Steps: {self.max_steps}")
         logger.info(f"Take Profit: {self.take_profit}")
         logger.info(f"Stop Loss: {self.stop_loss}")
+        logger.info(f"Trailing Stop Mode: {self.trailing_stop_mode}")
+        logger.info(f"Trailing Point: {self.trailing_point}")
         logger.info("=" * 50)
 
     def copy_rates(self, n=100):
@@ -143,10 +160,8 @@ class TradingBot:
         return result
 
     def calculate_entry(self, order_type, price):
-        pip_value = (self.tick_value / self.tick_size) * self.initial_lot
-
-        tp_diff = self.take_profit / pip_value
-        sl_diff = self.stop_loss / pip_value
+        tp_diff = self.take_profit / self.pip_value
+        sl_diff = self.stop_loss / self.pip_value
 
         if order_type == "buy" or order_type == "buy_limit":
             tp = price + tp_diff
@@ -215,7 +230,7 @@ class TradingBot:
         for order in orders:
             request = {
                 "action": mt5.TRADE_ACTION_REMOVE,
-                "ticket": order.ticket,
+                "order": order.ticket,
                 "type_time": mt5.ORDER_TIME_GTC,
                 "type_filling": mt5.ORDER_FILLING_IOC,
             }
@@ -227,6 +242,45 @@ class TradingBot:
             results.append(result)
 
         return results
+
+    def modify_position(self, position, tp, sl):
+        request = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "symbol": position.symbol,
+            "position": position.ticket,
+            "tp": tp,
+            "sl": sl,
+            "deviation": self.deviation,
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+
+        logger.info(f"Sending order: {request}")
+
+        result = mt5.order_send(request)
+        logger.info(f"Order result: {result}")
+
+        return result
+
+    def trailing_stop(self):
+        positions = mt5.positions_get(symbol=self.symbol)
+
+        for position in positions:
+            profit = position.profit
+            tp = position.tp
+            prev_sl = position.sl
+
+            profit_diff = profit / self.trailing_point
+
+            if profit > 0 and profit_diff > self.trailing_point:
+                logger.info("Trailing stop triggered...")
+
+                sl_diff = profit_diff / self.pip_value
+
+                new_sl = position.price_open + sl_diff
+
+                if new_sl > prev_sl:
+                    self.modify_position(position, tp, new_sl)
 
     def martingale_strategy(self, order_type, price):
         entry_price = price
@@ -269,6 +323,9 @@ class TradingBot:
 
             logger.info(f"Total positions: {total_positions}")
             logger.info(f"Total profit: {total_profit}")
+
+            if self.trailing_stop_mode and total_positions > 0:
+                self.trailing_stop()
 
             if last_rsi > self.rsi_overbought:
                 logger.info("Signal Detected! RSI is overbought...")
@@ -372,6 +429,10 @@ def main():
         take_profit = float(input("Take Profit (default: 15): ") or 15)
         stop_loss = float(input("Stop Loss (default: 10): ") or 10)
 
+        trailing_stop_mode = str(input("Trailing Stop Mode (Y/N): ")).upper() == "Y"
+        if trailing_stop_mode:
+            trailing_point = float(input("Trailing Point (default: 5): ") or 5)
+
         tradingBot = TradingBot(
             symbol,
             timeframe,
@@ -384,6 +445,8 @@ def main():
             multiplier,
             take_profit,
             stop_loss,
+            trailing_stop_mode,
+            trailing_point,
         )
         tradingBot.run()
     except KeyboardInterrupt as e:
