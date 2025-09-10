@@ -232,7 +232,7 @@ class TradingBot:
         entry_price = price
 
         for step in range(1, self.max_steps + 1):
-            lot = self.initial_lot * (self.multiplier**step)
+            lot = self.initial_lot * (self.multiplier ** (step - 1))
 
             tp_price, sl_price = self.calculate_entry(order_type, entry_price)
 
